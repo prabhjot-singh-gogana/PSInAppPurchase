@@ -5,20 +5,19 @@
 //  Created by prabhjot singh on 6/23/16.
 //  Copyright © 2016 Prabhjot Singh. All rights reserved.
 //
-
+// swiftlint:disable line_length
 import UIKit
 import StoreKit
 /**
  *  Product with SKProduct and some other properties
  */
 struct PSProduct {
-    var productName:String
-    var productID:String
-    var isOneTimePurchase:Bool = true
-    var isPurchased:Bool = false
-    fileprivate var product:SKProduct?
-    
-    init(name:String, productIdentifier:String) {
+    var productName: String
+    var productID: String
+    var isOneTimePurchase: Bool = true
+    var isPurchased: Bool = false
+    fileprivate var product: SKProduct?
+    init(name: String, productIdentifier: String) {
         self.productName = name
         self.productID = productIdentifier
         guard let purchased = PSInAppPurchase.getValueFromUserDefaultsForKey(productIdentifier), purchased == true else {
@@ -26,6 +25,36 @@ struct PSProduct {
             return
         }
         self.isPurchased = purchased
+    }
+    static func multipleProductsThrough(productsMetaArray:[(name: String, productIdentifier: String)]) -> [PSProduct]? {
+        var arrayOfProducts: [PSProduct]?
+        for productsTuple in productsMetaArray {
+            if arrayOfProducts == nil {
+                arrayOfProducts = [PSProduct]()
+            }
+            arrayOfProducts?.append(PSProduct(name: productsTuple.name, productIdentifier: productsTuple.productIdentifier))
+        }
+        return arrayOfProducts
+    }
+    static func multipleProductsThroughPlist() -> [PSProduct]? {
+        // Read plist from bundle and get Root Dictionary out of it
+        guard let path = Bundle.main.path(forResource: "PurchaseList", ofType: "plist") else {
+            return nil
+        }
+        guard let dictRoot = NSDictionary(contentsOfFile: path) else {
+            return nil
+        }
+        var arrayOfProductMetaData: Array<(name: String, productIdentifier: String)>?
+        for (key, value) in dictRoot {
+            if arrayOfProductMetaData == nil {
+                arrayOfProductMetaData = Array<(name: String, productIdentifier: String)>()
+            }
+            arrayOfProductMetaData?.append((name: key as! String, productIdentifier: value as! String))
+        }
+        guard let metaData = arrayOfProductMetaData else {
+            return nil
+        }
+        return PSProduct.multipleProductsThrough(productsMetaArray: metaData)
     }
 }
 
@@ -37,7 +66,6 @@ class PSInAppPurchase: NSObject {
 	fileprivate var completionHandler: ((Bool) -> Void)?
     fileprivate var buyProductHandler: ((Bool) -> Void)?
     var haveProducts = false
-    
     override init() {
         super.init()
         SKPaymentQueue.default().add(self)
@@ -47,10 +75,9 @@ class PSInAppPurchase: NSObject {
      - parameter psProducts: model of PSProduct with identifier
      - parameter handler:    handles the boolean
      */
-    internal func request(forProducts psProducts: PSProduct..., withHandler handler: @escaping ((Bool) -> Void)) {
+    internal func request(forProducts psProducts: [PSProduct], withHandler handler: @escaping ((Bool) -> Void)) {
         self.psProducts = psProducts
         self.completionHandler = handler
-        
         let arrayOfIdentifier = self.psProducts.map { (value: PSProduct) -> String in
             return value.productID
         }
@@ -58,9 +85,7 @@ class PSInAppPurchase: NSObject {
             self.completionHandler!(false)
             return
         }
-        
         let setOfProducts = Set(arrayOfIdentifier)
-        
 		if SKPaymentQueue.canMakePayments() {
 			productsRequest = SKProductsRequest(productIdentifiers:setOfProducts )
 			productsRequest?.delegate = self
@@ -74,8 +99,8 @@ class PSInAppPurchase: NSObject {
      - parameter product: model of PSProduct with identifier
      - parameter handler: handle the boolean
      */
-	internal func buyProduct(psProduct product: PSProduct, handler: @escaping ((Bool) -> Void)) {
-        let buyProduct = self.productThroughID(product.productID)
+	internal func buyProduct(productIdentifier productID: String, handler: @escaping ((Bool) -> Void)) {
+        let buyProduct = self.productThroughID(productID)
         buyProductHandler = handler
         if buyProduct == nil || buyProduct?.product == nil {
             buyProductHandler!(false)
@@ -88,7 +113,6 @@ class PSInAppPurchase: NSObject {
 		let payment = SKPayment(product: buyProduct!.product!)
 		SKPaymentQueue.default().add(payment)
 	}
-    
     internal func restoreCompletedTransactions() {
         SKPaymentQueue.default().restoreCompletedTransactions()
     }
@@ -103,12 +127,10 @@ class PSInAppPurchase: NSObject {
         let priceFormatter = NumberFormatter()
         priceFormatter.formatterBehavior = NumberFormatter.Behavior.behavior10_4
         priceFormatter.numberStyle = NumberFormatter.Style.currency
-        
         priceFormatter.locale = product.priceLocale
         return priceFormatter.string(from: product.price)!
     }
-    
-    fileprivate func productThroughID(_ productID:String) -> PSProduct? {
+    internal func productThroughID(_ productID: String) -> PSProduct? {
         if self.haveProducts && self.psProducts.count > 0 {
             var product =  self.psProducts.filter({ (product) -> Bool in
                 if productID == product.productID {
@@ -117,7 +139,6 @@ class PSInAppPurchase: NSObject {
                     return false
                 }
             }).first
-            
             guard let purchased = PSInAppPurchase.getValueFromUserDefaultsForKey(productID) else {
                 product!.isPurchased = false
                 return product
@@ -127,15 +148,12 @@ class PSInAppPurchase: NSObject {
         }
         return nil
     }
-    
 // MARK: Save in UseDefault
-    
 //  Get value from user defaults
     class func getValueFromUserDefaultsForKey(_ keyName: String!) -> Bool? {
         return UserDefaults.standard.bool(forKey: keyName)
     }
 // Set value to user defaults
-    
     class func setValueToUserDefaultsForKey(_ keyName: String!, value: Bool!) {
         if  keyName.characters.count == 0 || value == nil {
             return
@@ -150,40 +168,31 @@ class PSInAppPurchase: NSObject {
 //MARK:- SKProducts Delegates
 
 extension PSInAppPurchase: SKProductsRequestDelegate {
-    
      func productsRequest(_ request: SKProductsRequest, didReceive response: SKProductsResponse) {
         print("Loaded list of products")
         self.productsRequest = nil
-        
         let skproducts = response.products
-        
     // Filtered the array
         for product in skproducts {
             self.psProducts = psProducts.flatMap({ ( psProduct) -> PSProduct? in
                 var newPSProduct = psProduct
-                if product.productIdentifier == newPSProduct.productID{
+                if product.productIdentifier == newPSProduct.productID {
                     newPSProduct.product = product
                     return newPSProduct
                 }
                 return psProduct
             })
         }
-        
-        
         self.completionHandler?(true)
         completionHandler = nil
-  
     }
 }
 
 //MARK:- SKRequests Delegates
 
 extension PSInAppPurchase: SKRequestDelegate {
-    
     func requestDidFinish(_ request: SKRequest) {
-    
     }
-    
     func request(_ request: SKRequest, didFailWithError error: Error) {
         productsRequest = nil
         self.completionHandler?(false)
@@ -195,7 +204,6 @@ extension PSInAppPurchase: SKRequestDelegate {
 //MARK:-  SKPaymentTransaction Delegates
 
 extension PSInAppPurchase: SKPaymentTransactionObserver {
-    
     func paymentQueue(_ queue: SKPaymentQueue, updatedTransactions transactions: [SKPaymentTransaction]) {
         for transaction in transactions {
             switch transaction.transactionState {
@@ -215,14 +223,12 @@ extension PSInAppPurchase: SKPaymentTransactionObserver {
             }
         }
     }
-    
     fileprivate func completeTransaction(_ transaction: SKPaymentTransaction) {
         PSInAppPurchase.setValueToUserDefaultsForKey(transaction.payment.productIdentifier, value: true)
         if buyProductHandler != nil {
             buyProductHandler!(true)
         }
     }
-    
     fileprivate func restoreTransaction(_ transaction: SKPaymentTransaction) {
         print("Restore transaction")
         PSInAppPurchase.setValueToUserDefaultsForKey(transaction.payment.productIdentifier, value: true)
@@ -231,7 +237,6 @@ extension PSInAppPurchase: SKPaymentTransactionObserver {
         }
         SKPaymentQueue.default().finishTransaction(transaction)
     }
-    
     fileprivate func failedTransaction(_ transaction: SKPaymentTransaction) {
         print("Failed transaction")
         if transaction.transactionState != .failed {
@@ -243,7 +248,3 @@ extension PSInAppPurchase: SKPaymentTransactionObserver {
         SKPaymentQueue.default().finishTransaction(transaction)
     }
 }
-
-
-
-
