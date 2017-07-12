@@ -26,6 +26,11 @@ struct PSProduct {
         }
         self.isPurchased = purchased
     }
+    /**
+     use to fetch the products through multiple meta tuple
+     - parameter productsMetaArray: array of product info tuple
+     - returns: returns the array pf product
+     */
     static func multipleProductsThrough(productsMetaArray:[(name: String, productIdentifier: String)]) -> [PSProduct]? {
         var arrayOfProducts: [PSProduct]?
         for productsTuple in productsMetaArray {
@@ -36,6 +41,10 @@ struct PSProduct {
         }
         return arrayOfProducts
     }
+    /**
+     use to fetch the products through plist
+     - returns: returns the array pf product
+     */
     static func multipleProductsThroughPlist() -> [PSProduct]? {
         // Read plist from bundle and get Root Dictionary out of it
         guard let path = Bundle.main.path(forResource: "PurchaseList", ofType: "plist") else {
@@ -100,19 +109,34 @@ class PSInAppPurchase: NSObject {
      - parameter handler: handle the boolean
      */
 	internal func buyProduct(productIdentifier productID: String, handler: @escaping ((Bool) -> Void)) {
-        let buyProduct = self.productThroughID(productID)
         buyProductHandler = handler
-        if buyProduct == nil || buyProduct?.product == nil {
+        guard let buyProduct = self.productThroughID(productID) else {
             buyProductHandler!(false)
             return
         }
-        if buyProduct?.isPurchased == true {
+        if buyProduct.product == nil {
+            buyProductHandler!(false)
+            return
+        }
+        setProductToSharedProducts(product: buyProduct)
+        if buyProduct.isPurchased == true {
             buyProductHandler!(true)
             return
         }
-		let payment = SKPayment(product: buyProduct!.product!)
+		let payment = SKPayment(product: buyProduct.product!)
 		SKPaymentQueue.default().add(payment)
 	}
+    internal func setProductToSharedProducts(product: PSProduct?) {
+        guard let buyProduct = product else {return}
+        for (index, value) in self.psProducts.enumerated() {
+            if value.productID == buyProduct.productID {
+                self.psProducts[index] = buyProduct
+            }
+        }
+    }
+    /**
+     method use to restore the transaction
+     */
     internal func restoreCompletedTransactions() {
         SKPaymentQueue.default().restoreCompletedTransactions()
     }
@@ -132,13 +156,7 @@ class PSInAppPurchase: NSObject {
     }
     internal func productThroughID(_ productID: String) -> PSProduct? {
         if self.haveProducts && self.psProducts.count > 0 {
-            var product =  self.psProducts.filter({ (product) -> Bool in
-                if productID == product.productID {
-                    return true
-                } else {
-                    return false
-                }
-            }).first
+            var product = self.psProducts.filter{($0.productID == productID)}.first
             guard let purchased = PSInAppPurchase.getValueFromUserDefaultsForKey(productID) else {
                 product!.isPurchased = false
                 return product
